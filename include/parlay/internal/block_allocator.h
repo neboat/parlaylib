@@ -66,10 +66,11 @@ public:
   // Allocate a new list of list_length elements
 
   auto initialize_list(block_p start) -> block_p {
-    parallel_for (0, list_length - 1, [&] (size_t i) {
+    //parallel_for (0, list_length - 1, [&] (size_t i) {
+    for (size_t i = 0; i < list_length - 1; i++) {
 					block_p p =  reinterpret_cast<block_p>(reinterpret_cast<char*>(start) + i * block_size_);
 					p->next = reinterpret_cast<block_p>(reinterpret_cast<char*>(p) + block_size_);
-    }, 1000, true);
+    } //, 1000, true);
     block_p last =  reinterpret_cast<block_p>(reinterpret_cast<char*>(start) + (list_length-1) * block_size_);
     last->next = nullptr;
     return start;
@@ -106,10 +107,11 @@ public:
   void reserve(size_t n) {
     size_t num_lists = thread_count + (n + list_length - 1) / list_length;
     char* start = allocate_blocks(list_length*num_lists);
-    parallel_for(0, num_lists, [&] (size_t i) {
+    //parallel_for(0, num_lists, [&] (size_t i) {
+    for (size_t i = 0; i < num_lists; i++) {
       block_p offset = reinterpret_cast<block_p>(start + i * list_length * block_size_);
       global_stack.push(initialize_list(offset));
-   });
+   } //);
   }
 
   void print_stats() {
