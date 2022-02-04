@@ -26,7 +26,11 @@ namespace parlay {
 struct block_allocator {
 private:
 
+#ifndef DEBUG
   static const size_t default_list_bytes = (1 << 22) - 64; // in bytes
+#else
+  static const size_t default_list_bytes = (1 << 18) - 64; // in bytes
+#endif
   static const size_t pad_size = 256;
 
   struct block {
