@@ -87,9 +87,10 @@ public:
     }
   }
 
-  parlay::sequence<KV*> entries() {
-      return parlay::filter(parlay::delayed_map(H, [] (auto const &x) {return x.load();}),
-			    [] (KV* ptr) {return ptr != nullptr;});
+  parlay::sequence<K> keys() {
+    auto x =  parlay::filter(parlay::delayed_map(H, [] (auto const &x) {return x.load();}),
+			     [&] (ptr p) {return p != 0 && !is_deleted(p);});
+    return parlay::map(x, [&] (ptr p) {return deref(p)->first;});
   }
 
   size_t size() {
