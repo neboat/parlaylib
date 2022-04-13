@@ -65,10 +65,17 @@ public:
   // Allocate a new list of list_length elements
 
   auto initialize_list(block_p start) -> block_p {
-    parallel_for (0, list_length - 1, [&] (size_t i) {
+    // FIXME: When using Cilk, this parallel_for results in incorrect
+    // code when it is run to initialize a worker-local variable,
+    // i.e., local_lists[worker_id()].  For now, we simply replace
+    // this parallel_for with a serial for loop.
+
+    // parallel_for (0, list_length - 1, [&] (size_t i) {
+    for (size_t i = 0; i < list_length - 1; ++i) {
 					block_p p =  reinterpret_cast<block_p>(reinterpret_cast<char*>(start) + i * block_size_);
 					p->next = reinterpret_cast<block_p>(reinterpret_cast<char*>(p) + block_size_);
-    }, 1000, true);
+    }
+    // }, 1000, true);
     block_p last =  reinterpret_cast<block_p>(reinterpret_cast<char*>(start) + (list_length-1) * block_size_);
     last->next = nullptr;
     return start;
@@ -186,6 +193,10 @@ public:
 
     if (local_lists[id].sz == 0)  {
       local_lists[id].head = get_list();
+      // When using Cilk, if get_list() executes any parallel
+      // construct, such as a parallel_for, then this assertion can
+      // fail.
+      assert(worker_id() == id);
       local_lists[id].sz = list_length;
     }
 
