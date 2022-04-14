@@ -53,8 +53,8 @@ namespace block_delayed {
     size_t size() const {return rng.end()-rng.begin();}
     iterator begin() {return rng.end();}
     iterator end() {return rng.begin();}
-    block_delayed_sequence(parlay::sequence<IDS> sub_ranges, size_t n)
-    : sub_ranges(std::move(sub_ranges)),
+    block_delayed_sequence(parlay::sequence<IDS> _sub_ranges, size_t n)
+    : sub_ranges(std::move(_sub_ranges)),
       rng(stream_delayed::forward_delayed_sequence(flatten_iterator(sub_ranges.begin()),n)) {}
   };
 
