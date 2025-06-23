@@ -4,9 +4,11 @@
 #include <cstddef>
 
 #include <type_traits>
+#include <utility>
 
-#include <cilk/cilk.h>
+// #include <cilk/cilk.h>
 #include <cilk/cilk_api.h>
+#include <cilk/cpp_reducer.h>
 
 namespace parlay {
 
@@ -25,9 +27,10 @@ template <typename Lf, typename Rf>
 inline void par_do(Lf&& left, Rf&& right, bool) {
   static_assert(std::is_invocable_v<Lf&&>);
   static_assert(std::is_invocable_v<Rf&&>);
-  cilk_spawn std::forward<Rf>(right)();
-  std::forward<Lf>(left)();
-  cilk_sync;
+  cilk_scope {
+    cilk_spawn std::forward<Rf>(right)();
+    std::forward<Lf>(left)();
+  }
 }
 
 template <typename F>
@@ -38,11 +41,12 @@ inline void parallel_for(size_t start, size_t end, F&& f, long granularity, bool
   else if ((end - start) <= static_cast<size_t>(granularity))
     for (size_t i=start; i < end; i++) f(i);
   else {
-    size_t n = end-start;
-    size_t mid = (start + (9*(n+1))/16);
-    cilk_spawn parallel_for(start, mid, f, granularity);
-    parallel_for(mid, end, f, granularity);
-    cilk_sync;
+    cilk_scope {
+      size_t n = end - start;
+      size_t mid = (start + (9 * (n + 1)) / 16);
+      cilk_spawn parallel_for(start, mid, f, granularity);
+      parallel_for(mid, end, f, granularity);
+    }
   }
 }
 

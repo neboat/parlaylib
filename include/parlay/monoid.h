@@ -2,6 +2,7 @@
 #ifndef PARLAY_MONOID_H_
 #define PARLAY_MONOID_H_
 
+#include <cilk/cpp_reducer.h>
 #include <cstddef>
 
 #include <algorithm>    // IWYU pragma: keep
@@ -66,6 +67,25 @@ struct is_monoid_for<Monoid_, T, std::void_t<
 template<typename Monoid_, typename T>
 inline constexpr bool is_monoid_for_v = is_monoid_for<Monoid_, T>::value;
 
+// namespace cilk {
+// template<typename T, T id, typename F, F rd>
+// struct monoid {
+//   static void identity(void* v) { new (v) T{id}; }
+//   static void reduce(void* l, void* r) { *static_cast<T*>(l) = rd(*static_cast<T*>(l), *static_cast<T*>(r)); }
+// };
+// // template<typename Monoid, monoid_value_type_t<Monoid> id>
+// // struct monoid {
+// //   using T = monoid_value_type_t<Monoid>;
+// //   // using R = Monoid::operator();
+// //   static void identity(void* v) { new (v) T{id}; }
+// //   static void reduce(void* l, void* r) {
+// //     *static_cast<T*>(l) = R(*static_cast<T*>(l), *static_cast<T*>(r));
+// //   }
+// // };
+// // template<typename Monoid, monoid_value_type_t<Monoid> id>
+// // using monoid = monoid_static<monoid_value_type_t<Monoid>, id, decltype(Monoid::operator()), Monoid::operator()>;
+// }  // namespace cilk
+
 // ----------------------------- Definitions -------------------------------------------
 
 // Built-in monoids with sensible default identities
@@ -73,79 +93,94 @@ inline constexpr bool is_monoid_for_v = is_monoid_for<Monoid_, T>::value;
 template<typename T>
 struct plus : public std::plus<> {
   static_assert(is_binary_operator_for_v<std::plus<>, T>);
-  T identity;
-  plus() : identity(0) { }
+  T identity = 0;
+  plus() = default;
   explicit plus(T identity_) : identity(std::move(identity_)) { }
+  // static T& operator()(const T& l, const T& r) { return std::plus{}(l, r); }
+  // using cilk_monoid = typename cilk::monoid<plus, 0>;
+  // using cilk_monoid = cilk::monoid<T, 0, decltype(operator()), operator()>;
+  using cilk_monoid = cilk::reducer<std::plus<>, T>;
 };
 
 template<typename T>
 struct multiplies : public std::multiplies<>  {
   static_assert(is_binary_operator_for_v<std::multiplies<>, T>);
-  T identity;
-  multiplies() : identity(1) { }
+  T identity = 1;
+  multiplies() = default;
   explicit multiplies(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::monoid<multiplies, 1>;
 };
 
 template<typename T>
 struct logical_and : public std::logical_and<> {
   static_assert(is_binary_operator_for_v<std::logical_and<>, T>);
-  T identity;
-  logical_and() : identity(true) { }
+  T identity = true;
+  logical_and() = default;
   explicit logical_and(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::monoid<logical_and, true>;
 };
 
 template<typename T>
 struct logical_or : public std::logical_or<> {
   static_assert(is_binary_operator_for_v<std::logical_or<>, T>);
-  T identity;
-  logical_or() : identity(false) { }
+  T identity = false;
+  logical_or() = default;
   explicit logical_or(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::monoid<logical_or, false>;
 };
 
 template<typename T>
 struct bit_or : public std::bit_or<> {
   static_assert(is_binary_operator_for_v<std::bit_or<>, T>);
-  T identity;
-  bit_or() : identity(0) { }
+  T identity = 0;
+  bit_or() = default;
   explicit bit_or(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::monoid<bit_or, 0>;
 };
 
 template<typename T>
 struct bit_xor : public std::bit_xor<> {
   static_assert(is_binary_operator_for_v<std::bit_xor<>, T>);
-  T identity;
-  bit_xor() : identity(0) { }
+  T identity = 0;
+  bit_xor() = default;
   explicit bit_xor(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::reducer<std::bit_xor<>, T>;
 };
 
 template<typename T>
 struct bit_and : public std::bit_and<> {
   static_assert(is_binary_operator_for_v<std::bit_and<>, T>);
-  T identity;
-  bit_and() : identity(~static_cast<T>(0)) { }
+  T identity = ~static_cast<T>(0);
+  bit_and() = default;
   explicit bit_and(T identity_) : identity(std::move(identity_)) { }
+  // using cilk_monoid = cilk::monoid<bit_and, ~static_cast<T>(0)>;
 };
 
 template<typename T>
 struct maximum {
-  T identity;
-  maximum() : identity(std::numeric_limits<T>::lowest()) { }
+  T identity = std::numeric_limits<T>::lowest();
+  maximum() = default;
   explicit maximum(T identity_) : identity(std::move(identity_)) { }
   template<typename T1, typename T2>
   T operator()(T1&& x, T2&& y) const { return std::max<T>(std::forward<T1>(x), std::forward<T2>(y)); }
+  // using cilk_monoid = cilk::monoid<maximum, std::numeric_limits<T>::lowest()>;
+  // using cilk_monoid = cilk::monoid<T, std::numeric_limits<T>::lowest(), decltype(&maximum<T>::operator()), operator()>;
+  using cilk_monoid = cilk::max_reducer<T>;
 };
 
 template<typename T>
 struct minimum {
-  T identity;
-  minimum() : identity(std::numeric_limits<T>::max()) { }
+  T identity = std::numeric_limits<T>::max();
+  minimum() = default;
   explicit minimum(T identity_) : identity(std::move(identity_)) { }
   template<typename T1, typename T2>
   T operator()(T1&& x, T2&& y) const { return std::min<T>(std::forward<T1>(x), std::forward<T2>(y)); }
+  // using cilk_monoid = cilk::monoid<minimum, std::numeric_limits<T>::max()>;
 };
 
 // -------------------------- Custom user-defined monoids ------------------------------
 
+// template <typename F, typename TT, TT id, F f, typename = void>
 template <typename F, typename TT, typename = void>
 struct monoid {
   static_assert(is_binary_operator_for_v<F, TT>);
@@ -158,14 +193,21 @@ struct monoid {
     static_assert(std::is_invocable_r_v<T, const F&, T1, T2>);
     return std::invoke(f, std::forward<T1>(x), std::forward<T2>(y));
   }
+  // using cilk_monoid = cilk::monoid<monoid, id>;
+  // using cilk_monoid = cilk::monoid<T, id, decltype(operator()), operator()>;
+  using cilk_monoid = cilk::reducer<F, TT>;
 };
 
+// template<typename F, typename TT, TT id, F f>
+// struct monoid<F, TT, id, f, std::enable_if_t<std::is_class_v<F>>> : public F {
 template<typename F, typename TT>
 struct monoid<F, TT, std::enable_if_t<std::is_class_v<F>>> : public F {
   static_assert(is_binary_operator_for_v<F, TT>);
   using T = TT;
   T identity;
   monoid(F f, T id) : F(std::move(f)), identity(std::move(id)) { }
+  // using cilk_monoid = cilk::monoid<monoid, id>;
+  using cilk_monoid = cilk::reducer<F, TT>;
 };
 
 template<typename F, typename T>
@@ -268,6 +310,8 @@ struct maxm {
   maxm() : identity(std::numeric_limits<T>::lowest()) {}
   T identity;
   static T f(T a, T b) { return (std::max)(a, b); }
+  // using cilk_monoid = cilk::monoid<T, 0, decltype(f), f>;
+  using cilk_monoid = cilk::max_reducer<T>;
 };
 
 template <class T1, class T2>
@@ -314,5 +358,18 @@ struct minmaxm {
 
 
 }  // namespace parlay
+
+namespace cilk {
+
+template <typename T> class reducer<parlay::bit_xor<T>, T> {
+public:
+    static void identity(void *v) { new (v) T{0}; }
+    static void reduce(void *l, void *r) {
+        *static_cast<T *>(l) =
+            parlay::bit_xor<T>(*static_cast<T *>(l), *static_cast<T *>(r));
+    }
+};
+
+}
 
 #endif  // PARLAY_MONOID_H_

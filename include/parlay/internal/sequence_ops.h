@@ -200,12 +200,29 @@ auto reduce(Seq const &A, Monoid&& m, flags fl = no_flag) {
   if (l == 1 || (fl & fl_sequential)) {
     return reduce_serial(A, m);
   }
-  auto sums = sequence<T>::uninitialized(l);
-  sliced_for(n, block_size, [&](size_t i, size_t s, size_t e) {
-    assign_uninitialized(sums[i], reduce_serial(make_slice(A).cut(s, e), m));
-  });
-  T r = internal::reduce(sums, m);
-  return r;
+
+  std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
+  std::function reduce_fn = [=](void *l, void *r) {
+    *static_cast<T *>(l) = m(*static_cast<T *>(l), *static_cast<T *>(r));
+    if (std::is_destructible<T>::value) static_cast<T *>(r)->~T();
+  };
+
+  T cilk_reducer(ident_fn, reduce_fn) r = m.identity;
+
+  cilk_for (const auto &x : A) {
+    // NOTE: Need to explicitly convert the hyperobject back into a view here, to work around type-deduction issues.
+    r = m(std::move(*&r), x);
+  }
+  // NOTE: Need to explicitly convert the hyperobject back into a view here, to work around type-deduction issues.
+  return *&r;
+
+  //// ORIGINAL PARLAYLIB CODE ////
+  // auto sums = sequence<T>::uninitialized(l);
+  // sliced_for(n, block_size, [&](size_t i, size_t s, size_t e) {
+  //   assign_uninitialized(sums[i], reduce_serial(make_slice(A).cut(s, e), m));
+  // });
+  // T r = internal::reduce(sums, m);
+  // return r;
 }
 
 const flags fl_scan_inclusive = (1 << 4);
