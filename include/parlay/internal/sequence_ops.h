@@ -9,6 +9,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "cilk_scan.h"
+
 #include "../delayed_sequence.h"
 #include "../monoid.h"
 #include "../parallel.h"
@@ -259,19 +261,44 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   static_assert(is_random_access_range_v<In_Seq>);
   static_assert(is_monoid_for_v<Monoid, range_reference_type_t<In_Seq>>);
   using T = monoid_value_type_t<Monoid>;
-  size_t n = In.size();
-  size_t l = num_blocks(n, _block_size);
-  if (l <= 2 || fl & fl_sequential)
-    return scan_serial(In, Out, m, m.identity, fl, out_uninitialized);
-  auto sums = sequence<T>::uninitialized(l);
-  sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
-    assign_uninitialized(sums[i], reduce_serial(make_slice(In).cut(s, e), m));
-  });
-  T total = scan_serial(sums, make_slice(sums), m, m.identity, 0, false);
-  sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
-    auto O = make_slice(Out).cut(s, e);
-    scan_serial(make_slice(In).cut(s, e), O, m, sums[i], fl, out_uninitialized);
-  });
+
+  std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
+  std::function reduce_fn = [=](T *l, T *r) { return m(*l, *r); };
+  bool inclusive = fl & fl_scan_inclusive;
+  // FIXME: It's awkward that we need to separately create a non-reducer scanner object, so that the reducer object can
+  // refer to the object's identity and reduce methods.
+  scanner<Out_Range> base(Out, ident_fn, reduce_fn, inclusive);
+  scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
+
+  if (inclusive) {
+    cilk_for(size_t i = 0; i < In.size(); ++i) {
+      auto view = scanner.view(i);
+      *view = m(std::move(*&view), In[i]);
+    }
+  } else {
+    cilk_for(size_t i = 0; i < In.size(); ++i) {
+      T t = In[i];
+      auto view = scanner.view(i);
+      *view = m(std::move(*&view), t);
+    }
+  }
+  T total = scanner.sum;
+
+  //// ORIGINAL PARLAYLIB CODE ////
+  // size_t n = In.size();
+  // size_t l = num_blocks(n, _block_size);
+  // if (l <= 2 || fl & fl_sequential)
+  //   return scan_serial(In, Out, m, m.identity, fl, out_uninitialized);
+  // auto sums = sequence<T>::uninitialized(l);
+  // sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
+  //   assign_uninitialized(sums[i], reduce_serial(make_slice(In).cut(s, e), m));
+  // });
+  // T total = scan_serial(sums, make_slice(sums), m, m.identity, 0, false);
+  // sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
+  //   auto O = make_slice(Out).cut(s, e);
+  //   scan_serial(make_slice(In).cut(s, e), O, m, sums[i], fl, out_uninitialized);
+  // });
+
   return total;
 }
 
