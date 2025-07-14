@@ -261,6 +261,10 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   static_assert(is_random_access_range_v<In_Seq>);
   static_assert(is_monoid_for_v<Monoid, range_reference_type_t<In_Seq>>);
   using T = monoid_value_type_t<Monoid>;
+  size_t n = In.size();
+  size_t l = num_blocks(n, _block_size);
+  if (l <= 2 || fl & fl_sequential)
+    return scan_serial(In, Out, m, m.identity, fl, out_uninitialized);
 
   std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
   std::function reduce_fn = [=](T *l, T *r) { return m(*l, *r); };
@@ -271,12 +275,12 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
 
   if (inclusive) {
-    cilk_for(size_t i = 0; i < In.size(); ++i) {
+    cilk_for(size_t i = 0; i < n; ++i) {
       auto view = scanner.view(i);
       *view = m(std::move(*&view), In[i]);
     }
   } else {
-    cilk_for(size_t i = 0; i < In.size(); ++i) {
+    cilk_for(size_t i = 0; i < n; ++i) {
       T t = In[i];
       auto view = scanner.view(i);
       *view = m(std::move(*&view), t);
@@ -285,10 +289,6 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   T total = scanner.sum;
 
   //// ORIGINAL PARLAYLIB CODE ////
-  // size_t n = In.size();
-  // size_t l = num_blocks(n, _block_size);
-  // if (l <= 2 || fl & fl_sequential)
-  //   return scan_serial(In, Out, m, m.identity, fl, out_uninitialized);
   // auto sums = sequence<T>::uninitialized(l);
   // sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
   //   assign_uninitialized(sums[i], reduce_serial(make_slice(In).cut(s, e), m));
