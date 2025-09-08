@@ -203,13 +203,22 @@ auto reduce(Seq const &A, Monoid&& m, flags fl = no_flag) {
     return reduce_serial(A, m);
   }
 
-  std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
-  std::function reduce_fn = [=](void *l, void *r) {
-    *static_cast<T *>(l) = m(*static_cast<T *>(l), *static_cast<T *>(r));
-    if (std::is_destructible<T>::value) static_cast<T *>(r)->~T();
-  };
+  // std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
+  // std::function reduce_fn = [=](void *l, void *r) {
+  //   *static_cast<T *>(l) = m(*static_cast<T *>(l), *static_cast<T *>(r));
+  //   if (std::is_destructible<T>::value) static_cast<T *>(r)->~T();
+  // };
 
-  T cilk_reducer(ident_fn, reduce_fn) r = m.identity;
+  // T cilk_reducer(ident_fn, reduce_fn) r = m.identity;
+
+  const __reducer_callbacks _Monoid = {.size = sizeof(T),
+                                       .identity = [=](void *v) { new (v) T(m.identity); },
+                                       .reduce =
+                                           [=](void *l, void *r) {
+                                             *static_cast<T *>(l) = m(*static_cast<T *>(l), *static_cast<T *>(r));
+                                             if (std::is_destructible<T>::value) static_cast<T *>(r)->~T();
+                                           }};
+  T cilk_reducer(_Monoid) r = m.identity;
 
   cilk_for (const auto &x : A) {
     // NOTE: Need to explicitly convert the hyperobject back into a view here, to work around type-deduction issues.
@@ -272,7 +281,10 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   // FIXME: It's awkward that we need to separately create a non-reducer scanner object, so that the reducer object can
   // refer to the object's identity and reduce methods.
   scanner<Out_Range> base(Out, ident_fn, reduce_fn, inclusive);
-  scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
+  // scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
+  const __reducer_callbacks _Monoid = {
+      .size = sizeof(scanner<Out_Range>), .identity = base.identity, .reduce = base.reduce};
+  scanner<Out_Range> cilk_reducer(_Monoid) scanner = base;
 
   if (inclusive) {
     cilk_for(size_t i = 0; i < n; ++i) {
@@ -288,7 +300,7 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   }
   T total = scanner.sum;
 
-  //// ORIGINAL PARLAYLIB CODE ////
+  // //// ORIGINAL PARLAYLIB CODE ////
   // auto sums = sequence<T>::uninitialized(l);
   // sliced_for(n, _block_size, [&](size_t i, size_t s, size_t e) {
   //   assign_uninitialized(sums[i], reduce_serial(make_slice(In).cut(s, e), m));
