@@ -29,7 +29,7 @@ template <typename T>
 using container_value_t = std::__remove_cvref_t<decltype(std::declval<T>()[0])>;
 
 template <typename T>
-struct scanner {
+struct scanner : public __reducer_base {
   using V = container_value_t<T>;
   using IdFnTy = __cilk_identity_fn;
   using ReduceFnTy = std::function<V(V*,V*)>;
@@ -79,17 +79,27 @@ struct scanner {
     }
   }
 
-  void identity_fn(void *v) {
+  std::size_t size() override {
+    return sizeof(scanner);
+  }
+
+  // void identity_fn(void *v) {
+  __reducer_base *identity(void *v) override {
     auto *sr = new (v) scanner(array, value_id, value_reduce, inclusive);
     sr->r.start = -1;
     sr->r.end = -1;
 
     // No view created by the identity function is leftmost.
     sr->is_leftmost = false;
+    return this;
   }
-  __cilk_identity_fn identity = [this](void *v) -> void { identity_fn(v); };
+  // __cilk_identity_fn identity = [this](void *v) -> void { identity_fn(v); };
 
-  void reduce_fn(void *l, void *r) {
+
+  // void reduce_fn(void *l, void *r) {
+    // auto *lsr = static_cast<scanner *>(l);
+    // auto *rsr = static_cast<scanner *>(r);
+  void reduce(__reducer_base *l, __reducer_base *r) override {
     auto *lsr = static_cast<scanner *>(l);
     auto *rsr = static_cast<scanner *>(r);
     // Perform up-sweep.
@@ -112,7 +122,7 @@ struct scanner {
     lsr->r.end = rsr->r.end;
     lsr->sum = value_reduce(&lsr->sum, &rsr->sum);
   }
-  __cilk_reduce_fn reduce = [this](void *l, void *r) -> void { reduce_fn(l, r); };
+  // __cilk_reduce_fn reduce = [this](void *l, void *r) -> void { reduce_fn(l, r); };
 
   explicit scanner(T &array, IdFnTy &value_id, ReduceFnTy &value_reduce, bool inclusive) :
       value_id(value_id), value_reduce(value_reduce), array(array), inclusive(inclusive) {

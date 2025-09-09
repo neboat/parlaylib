@@ -278,13 +278,14 @@ auto scan_(In_Seq const &In, Out_Range Out, Monoid&& m, flags fl, bool out_unini
   std::function ident_fn = [=](void *v) { new (v) T(m.identity); };
   std::function reduce_fn = [=](T *l, T *r) { return m(*l, *r); };
   bool inclusive = fl & fl_scan_inclusive;
-  // FIXME: It's awkward that we need to separately create a non-reducer scanner object, so that the reducer object can
-  // refer to the object's identity and reduce methods.
-  scanner<Out_Range> base(Out, ident_fn, reduce_fn, inclusive);
-  // scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
-  const __reducer_callbacks _Monoid = {
-      .size = sizeof(scanner<Out_Range>), .identity = base.identity, .reduce = base.reduce};
-  scanner<Out_Range> cilk_reducer(_Monoid) scanner = base;
+  // // FIXME: It's awkward that we need to separately create a non-reducer scanner object, so that the reducer object can
+  // // refer to the object's identity and reduce methods.
+  // scanner<Out_Range> base(Out, ident_fn, reduce_fn, inclusive);
+  // // scanner<Out_Range> cilk_reducer(base.identity, base.reduce) scanner = base;
+  // const __reducer_callbacks _Monoid = {
+  //     .size = sizeof(scanner<Out_Range>), .identity = base.identity, .reduce = base.reduce};
+  // scanner<Out_Range> cilk_reducer(_Monoid) scanner = base;
+  scanner<Out_Range> cilk_reducer scanner(Out, ident_fn, reduce_fn, inclusive);
 
   if (inclusive) {
     cilk_for(size_t i = 0; i < n; ++i) {
