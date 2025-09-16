@@ -91,7 +91,7 @@ struct scanner : public __reducer_base {
 
     // No view created by the identity function is leftmost.
     sr->is_leftmost = false;
-    return this;
+    return sr;
   }
   // __cilk_identity_fn identity = [this](void *v) -> void { identity_fn(v); };
 
@@ -121,6 +121,8 @@ struct scanner : public __reducer_base {
     // The resulting left view covers the full range.
     lsr->r.end = rsr->r.end;
     lsr->sum = value_reduce(&lsr->sum, &rsr->sum);
+
+    rsr->~scanner();
   }
   // __cilk_reduce_fn reduce = [this](void *l, void *r) -> void { reduce_fn(l, r); };
 
